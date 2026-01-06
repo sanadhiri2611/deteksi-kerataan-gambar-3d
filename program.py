@@ -1819,22 +1819,22 @@ with tab_about:
         {
             "nama": "Intan Puspita Puryanti",
             "npm": "23010029",
-            "foto": "foto_anggota/intan.jpeg"
+            "foto": "intan.jpeg"
         },
         {
             "nama": "Safira Putri Azzahra", 
             "npm": "23010054",
-            "foto": "foto_anggota/safira.jpeg"
+            "foto": "safira.jpeg"
         },
         {
             "nama": "Rizka Wulandari",
             "npm": "23010063",
-            "foto": "foto_anggota/rizka.jpeg"
+            "foto": "rizka.jpeg"
         },
         {
             "nama": "Dhiffa Rulla Innayah",
             "npm": "23010078",
-            "foto": "foto_anggota/dhiffa.jpeg"
+            "foto": "dhiffa.jpeg"
         }
     ]
     
