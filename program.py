@@ -789,11 +789,26 @@ with tab_home:
         </div>
         """, unsafe_allow_html=True)
 
+
 # ==========================================================
 # ANALISIS - TAB 2 (DENGAN FITUR UPLOAD MULTIPLE)
 # ==========================================================
 with tab_analisis:
     st.title("🔍✨ Analisis Kerataan Permukaan")
+    
+    # Inisialisasi session state untuk menyimpan status analisis
+    if 'processing_triggered' not in st.session_state:
+        st.session_state.processing_triggered = False
+    if 'last_processed_params' not in st.session_state:
+        st.session_state.last_processed_params = None
+    if 'analysis_results' not in st.session_state:
+        st.session_state.analysis_results = None
+    if 'current_image_source' not in st.session_state:
+        st.session_state.current_image_source = None
+    if 'current_image_path' not in st.session_state:
+        st.session_state.current_image_path = None
+    if 'current_uploaded_files' not in st.session_state:
+        st.session_state.current_uploaded_files = None
     
     # Membagi layout menjadi parameter dan processing
     col_param, col_proc = st.columns([1, 3])
@@ -804,49 +819,52 @@ with tab_analisis:
         
         # Parameter preprocessing
         st.markdown("#### 🌸 Preprocessing")
-        enable_resize = st.checkbox("Resize otomatis", value=True)
+        enable_resize = st.checkbox("Resize otomatis", value=True, key="enable_resize")
         if enable_resize:
-            target_width = st.slider("Lebar target", 300, 1200, 600)
-        enable_blur = st.checkbox("Gaussian Blur", value=True)
+            target_width = st.slider("Lebar target", 300, 1200, 600, key="target_width")
+        enable_blur = st.checkbox("Gaussian Blur", value=True, key="enable_blur")
         if enable_blur:
-            blur_ksize = st.selectbox("Ukuran kernel", [3, 5, 7, 9], index=1)
+            blur_ksize = st.selectbox("Ukuran kernel", [3, 5, 7, 9], index=1, key="blur_ksize")
         
         # Parameter edge detection
         st.markdown("#### ✂ Edge Detection")
         edge_method = st.radio(
             "Metode deteksi tepi:",
             ["Canny", "Sobel", "Laplacian"],
-            horizontal=False
+            horizontal=False,
+            key="edge_method"
         )
         
         if edge_method == "Canny":
-            canny_min = st.slider("Canny Min", 10, 200, 50, help="Ambang bawah untuk deteksi tepi")
-            canny_max = st.slider("Canny Max", 50, 300, 150, help="Ambang atas untuk deteksi tepi")
+            canny_min = st.slider("Canny Min", 10, 200, 50, key="canny_min", help="Ambang bawah untuk deteksi tepi")
+            canny_max = st.slider("Canny Max", 50, 300, 150, key="canny_max", help="Ambang atas untuk deteksi tepi")
         elif edge_method == "Sobel":
-            sobel_kernel = st.selectbox("Kernel Sobel", [3, 5], index=0)
+            sobel_kernel = st.selectbox("Kernel Sobel", [3, 5], index=0, key="sobel_kernel")
         else:  # Laplacian
-            laplacian_kernel = st.selectbox("Kernel Laplacian", [3, 5], index=0)
+            laplacian_kernel = st.selectbox("Kernel Laplacian", [3, 5], index=0, key="laplacian_kernel")
         
         # Parameter threshold
         st.markdown("#### 📏 Threshold Kerataan")
         flatness_threshold = st.slider(
             "Ambang kerataan (Edge STD)", 
             5.0, 100.0, 25.0, 1.0,
+            key="flatness_threshold",
             help="Nilai STD edge yang menentukan kerataan. Semakin kecil, semakin ketat"
         )
         
         # Parameter Contour Overlay
         st.markdown("#### 🎨 Contour Overlay")
-        enable_contour = st.checkbox("Tampilkan kontur pada gambar", value=True)
+        enable_contour = st.checkbox("Tampilkan kontur pada gambar", value=True, key="enable_contour")
         
         if enable_contour:
-            contour_color = st.color_picker("Warna kontur", "#FF0000")
-            contour_thickness = st.slider("Ketebalan kontur", 1, 10, 2)
-            contour_min_area = st.slider("Area kontur minimum", 50, 1000, 100, 
+            contour_color = st.color_picker("Warna kontur", "#FF0000", key="contour_color")
+            contour_thickness = st.slider("Ketebalan kontur", 1, 10, 2, key="contour_thickness")
+            contour_min_area = st.slider("Area kontur minimum", 50, 1000, 100, key="contour_min_area",
                                         help="Kontur dengan area di bawah ini akan diabaikan")
             contour_mode = st.radio(
                 "Mode overlay kontur:",
                 ["Outline Only", "Filled Contours", "Contours on Original"],
+                key="contour_mode",
                 help="""Outline Only: Hanya garis kontur\n
                        Filled Contours: Kontur diisi dengan warna\n
                        Contours on Original: Kontur ditampilkan di atas gambar asli"""
@@ -860,7 +878,8 @@ with tab_analisis:
         image_source = st.radio(
             "Sumber Gambar:",
             ["📚 Dataset", "📤 Upload Manual"],
-            horizontal=True
+            horizontal=True,
+            key="image_source"
         )
         
         if image_source == "📚 Dataset":
@@ -903,13 +922,41 @@ with tab_analisis:
                 selected_name = st.selectbox(
                     "Pilih gambar contoh:",
                     list(available_images.keys()),
-                    help="Pilih salah satu gambar dari dataset untuk dianalisis"
+                    help="Pilih salah satu gambar dari dataset untuk dianalisis",
+                    key="selected_dataset_image"
                 )
                 
                 image_path = available_images[selected_name]
                 
-                # Tombol proses
-                if st.button("🚀 Proses Analisis", type="primary", use_container_width=True):
+                # Simpan informasi gambar saat ini di session state
+                current_params = {
+                    'source': 'dataset',
+                    'image_path': image_path,
+                    'selected_name': selected_name,
+                    'enable_resize': enable_resize,
+                    'target_width': target_width if enable_resize else None,
+                    'enable_blur': enable_blur,
+                    'blur_ksize': blur_ksize if enable_blur else None,
+                    'edge_method': edge_method,
+                    'canny_min': canny_min if edge_method == "Canny" else None,
+                    'canny_max': canny_max if edge_method == "Canny" else None,
+                    'sobel_kernel': sobel_kernel if edge_method == "Sobel" else None,
+                    'laplacian_kernel': laplacian_kernel if edge_method == "Laplacian" else None,
+                    'flatness_threshold': flatness_threshold,
+                    'enable_contour': enable_contour,
+                    'contour_color': contour_color if enable_contour else None,
+                    'contour_thickness': contour_thickness if enable_contour else None,
+                    'contour_min_area': contour_min_area if enable_contour else None,
+                    'contour_mode': contour_mode if enable_contour else None
+                }
+                
+                # Cek apakah parameter berubah atau gambar berubah
+                params_changed = current_params != st.session_state.last_processed_params
+                image_changed = (st.session_state.current_image_source != 'dataset' or 
+                               st.session_state.current_image_path != image_path)
+                
+                # Jika parameter berubah atau gambar berubah, proses ulang
+                if params_changed or image_changed or st.session_state.analysis_results is None:
                     with st.spinner("🔍 Menganalisis gambar..."):
                         try:
                             # Baca gambar
@@ -927,265 +974,278 @@ with tab_analisis:
                                 contour_min_area, contour_mode
                             )
                             
-                            edge_std = results['edge_std']
+                            # Simpan hasil di session state
+                            st.session_state.analysis_results = results
+                            st.session_state.last_processed_params = current_params
+                            st.session_state.current_image_source = 'dataset'
+                            st.session_state.current_image_path = image_path
                             
-                            # Tentukan status
-                            if edge_std <= flatness_threshold:
-                                status = "RATA ✨"
-                                color = "#4CAF50"
-                                icon = "✅"
+                        except Exception as e:
+                            st.error(f"❌ Terjadi error saat memproses gambar: {str(e)}")
+                            st.session_state.analysis_results = None
+                
+                # Jika ada hasil yang disimpan, tampilkan
+                if st.session_state.analysis_results is not None:
+                    results = st.session_state.analysis_results
+                    edge_std = results['edge_std']
+                    
+                    # Tentukan status
+                    if edge_std <= flatness_threshold:
+                        status = "RATA ✨"
+                        color = "#4CAF50"
+                        icon = "✅"
+                    else:
+                        status = "TIDAK RATA 💥"
+                        color = "#F44336"
+                        icon = "⚠️"
+                    
+                    # Display hasil
+                    st.success(f"Analisis selesai! {icon}")
+                    
+                    # Tampilkan gambar dalam 3 atau 4 kolom tergantung apakah kontur diaktifkan
+                    st.subheader("📷 Visualisasi Hasil")
+                    
+                    if enable_contour and results['contour_image'] is not None:
+                        c1, c2, c3, c4 = st.columns(4)
+                        
+                        with c1:
+                            st.image(results['original_img'], caption="🖼 Gambar Asli", use_container_width=True)
+                            st.caption(f"Ukuran: {results['original_img'].shape[1]}x{results['original_img'].shape[0]}")
+                        
+                        with c2:
+                            st.image(results['blur'], caption="🌙 Grayscale + Blur", use_container_width=True)
+                            st.caption(f"Kernel: {blur_ksize}x{blur_ksize}")
+                        
+                        with c3:
+                            st.image(results['edges'], caption=f"✂ {edge_method} Edges", use_container_width=True)
+                            st.caption(results['method_text'])
+                        
+                        with c4:
+                            contour_text = f"🎨 {contour_mode}"
+                            st.image(results['contour_image'], caption=contour_text, use_container_width=True)
+                            st.caption(f"Total {len(results['filtered_contours'])} kontur ditemukan")
+                    else:
+                        c1, c2, c3 = st.columns(3)
+                        
+                        with c1:
+                            st.image(results['original_img'], caption="🖼 Gambar Asli", use_container_width=True)
+                            st.caption(f"Ukuran: {results['original_img'].shape[1]}x{results['original_img'].shape[0]}")
+                        
+                        with c2:
+                            st.image(results['blur'], caption="🌙 Grayscale + Blur", use_container_width=True)
+                            st.caption(f"Kernel: {blur_ksize}x{blur_ksize}")
+                        
+                        with c3:
+                            st.image(results['edges'], caption=f"✂ {edge_method} Edges", use_container_width=True)
+                            st.caption(results['method_text'])
+                    
+                    # Tampilkan metrik dan status
+                    st.markdown("---")
+                    st.subheader("📊 Hasil Analisis")
+                    
+                    # Metrik dalam cards
+                    if enable_contour:
+                        col_metric1, col_metric2, col_metric3, col_metric4 = st.columns(4)
+                    else:
+                        col_metric1, col_metric2, col_metric3 = st.columns(3)
+                    
+                    with col_metric1:
+                        st.markdown(f"""
+                        <div class="stMetric">
+                        <h4 style="color:#9c27b0;">📐 Edge STD</h4>
+                        <h2 style="color:#2196F3; text-align:center;">{edge_std:.2f}</h2>
+                        <p style="text-align:center;">Standar Deviasi Edge</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    with col_metric2:
+                        st.markdown(f"""
+                        <div class="stMetric">
+                        <h4 style="color:#9c27b0;">🎯 Ambang</h4>
+                        <h2 style="color:#FF9800; text-align:center;">{flatness_threshold:.1f}</h2>
+                        <p style="text-align:center;">Batas Kerataan</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    with col_metric3:
+                        st.markdown(f"""
+                        <div class="stMetric">
+                        <h4 style="color:#9c27b0;">📈 Status</h4>
+                        <h2 style="color:{color}; text-align:center;">{status}</h2>
+                        <p style="text-align:center;">Tingkat Kerataan</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    if enable_contour and results['contour_image'] is not None:
+                        with col_metric4:
+                            st.markdown(f"""
+                            <div class="stMetric">
+                            <h4 style="color:#9c27b0;">🔍 Kontur</h4>
+                            <h2 style="color:#9C27B0; text-align:center;">{len(results['filtered_contours'])}</h2>
+                            <p style="text-align:center;">Jumlah Kontur</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                    
+                    # Visualisasi grafik - DIAGRAM PERBANDINGAN
+                    st.subheader("📈 Diagram Perbandingan")
+                    
+                    if enable_contour:
+                        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(14, 10))
+                    else:
+                        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
+                    
+                    # Bar chart edge vs threshold
+                    bars1 = ax1.bar(["Edge STD", "Ambang"], [edge_std, flatness_threshold],
+                                 color=['#FF6B8B', '#4ECDC4'], edgecolor='#333', linewidth=2)
+                    ax1.axhline(y=flatness_threshold, color='red', linestyle='--', alpha=0.5)
+                    ax1.set_title("Perbandingan Nilai Edge", fontsize=12, fontweight='bold')
+                    ax1.set_ylabel("Nilai STD")
+                    ax1.grid(True, alpha=0.3)
+                    
+                    for bar in bars1:
+                        height = bar.get_height()
+                        ax1.text(bar.get_x() + bar.get_width()/2., height + 0.5,
+                               f'{height:.1f}', ha='center', va='bottom')
+                    
+                    # Pie chart status
+                    if edge_std <= flatness_threshold:
+                        sizes = [edge_std, flatness_threshold - edge_std]
+                        colors_pie = ['#4CAF50', '#E0E0E0']
+                        explode = (0.1, 0)
+                    else:
+                        sizes = [flatness_threshold, edge_std - flatness_threshold]
+                        colors_pie = ['#F44336', '#FFCDD2']
+                        explode = (0, 0.1)
+                    
+                    ax2.pie(sizes, explode=explode, colors=colors_pie,
+                          autopct='%1.1f%%', shadow=True, startangle=90)
+                    ax2.set_title(f"Status: {status}", fontsize=12, fontweight='bold')
+                    
+                    if enable_contour:
+                        # Histogram area kontur
+                        if results['filtered_contours']:
+                            areas = [cv2.contourArea(cnt) for cnt in results['filtered_contours']]
+                            ax3.hist(areas, bins=10, color='#FFB6C1', edgecolor='black')
+                            ax3.set_title("Distribusi Area Kontur", fontsize=12, fontweight='bold')
+                            ax3.set_xlabel("Area Kontur")
+                            ax3.set_ylabel("Frekuensi")
+                            ax3.grid(True, alpha=0.3)
+                        else:
+                            ax3.text(0.5, 0.5, "Tidak ada kontur\nditemukan", 
+                                   ha='center', va='center', fontsize=12)
+                            ax3.set_title("Distribusi Area Kontur", fontsize=12, fontweight='bold')
+                        
+                        # Scatter plot kontur
+                        if results['filtered_contours']:
+                            x_coords = []
+                            y_coords = []
+                            for cnt in results['filtered_contours']:
+                                M = cv2.moments(cnt)
+                                if M["m00"] != 0:
+                                    cx = int(M["m10"] / M["m00"])
+                                    cy = int(M["m01"] / M["m00"])
+                                    x_coords.append(cx)
+                                    y_coords.append(cy)
+                            
+                            if x_coords and y_coords:
+                                ax4.scatter(x_coords, y_coords, color='#9C27B0', s=50, alpha=0.6)
+                                ax4.set_title("Posisi Pusat Kontur", fontsize=12, fontweight='bold')
+                                ax4.set_xlabel("X Coordinate")
+                                ax4.set_ylabel("Y Coordinate")
+                                ax4.invert_yaxis()
+                                ax4.grid(True, alpha=0.3)
                             else:
-                                status = "TIDAK RATA 💥"
-                                color = "#F44336"
-                                icon = "⚠️"
-                            
-                            # Display hasil
-                            st.success(f"Analisis selesai! {icon}")
-                            
-                            # Tampilkan gambar dalam 3 atau 4 kolom tergantung apakah kontur diaktifkan
-                            st.subheader("📷 Visualisasi Hasil")
-                            
-                            if enable_contour and results['contour_image'] is not None:
-                                c1, c2, c3, c4 = st.columns(4)
-                                
-                                with c1:
-                                    st.image(results['original_img'], caption="🖼 Gambar Asli", use_container_width=True)
-                                    st.caption(f"Ukuran: {results['original_img'].shape[1]}x{results['original_img'].shape[0]}")
-                                
-                                with c2:
-                                    st.image(results['blur'], caption="🌙 Grayscale + Blur", use_container_width=True)
-                                    st.caption(f"Kernel: {blur_ksize}x{blur_ksize}")
-                                
-                                with c3:
-                                    st.image(results['edges'], caption=f"✂ {edge_method} Edges", use_container_width=True)
-                                    st.caption(results['method_text'])
-                                
-                                with c4:
-                                    contour_text = f"🎨 {contour_mode}"
-                                    st.image(results['contour_image'], caption=contour_text, use_container_width=True)
-                                    st.caption(f"Total {len(results['filtered_contours'])} kontur ditemukan")
-                            else:
-                                c1, c2, c3 = st.columns(3)
-                                
-                                with c1:
-                                    st.image(results['original_img'], caption="🖼 Gambar Asli", use_container_width=True)
-                                    st.caption(f"Ukuran: {results['original_img'].shape[1]}x{results['original_img'].shape[0]}")
-                                
-                                with c2:
-                                    st.image(results['blur'], caption="🌙 Grayscale + Blur", use_container_width=True)
-                                    st.caption(f"Kernel: {blur_ksize}x{blur_ksize}")
-                                
-                                with c3:
-                                    st.image(results['edges'], caption=f"✂ {edge_method} Edges", use_container_width=True)
-                                    st.caption(results['method_text'])
-                            
-                            # Tampilkan metrik dan status
-                            st.markdown("---")
-                            st.subheader("📊 Hasil Analisis")
-                            
-                            # Metrik dalam cards
+                                ax4.text(0.5, 0.5, "Tidak dapat menghitung\npusat kontur", 
+                                       ha='center', va='center', fontsize=12)
+                                ax4.set_title("Posisi Pusat Kontur", fontsize=12, fontweight='bold')
+                        else:
+                            ax4.text(0.5, 0.5, "Tidak ada kontur\nditemukan", 
+                                   ha='center', va='center', fontsize=12)
+                            ax4.set_title("Posisi Pusat Kontur", fontsize=12, fontweight='bold')
+                    
+                    plt.tight_layout()
+                    st.pyplot(fig)
+                    
+                    # Detail analisis - TANPA JSON
+                    with st.expander("🔍 Detail Teknis Analisis", expanded=False):
+                        col_detail1, col_detail2 = st.columns(2)
+                        
+                        with col_detail1:
+                            st.markdown("#### ⚙️ Parameter Pengolahan")
+                            st.write(f"**Resize:** {'Aktif' if enable_resize else 'Tidak Aktif'}")
+                            if enable_resize:
+                                st.write(f"- Target Width: {target_width}px")
+                            st.write(f"**Gaussian Blur:** {'Aktif' if enable_blur else 'Tidak Aktif'}")
+                            if enable_blur:
+                                st.write(f"- Kernel Size: {blur_ksize}x{blur_ksize}")
+                            st.write(f"**Metode Edge:** {edge_method}")
+                            st.write(f"- Detail: {results['method_text']}")
+                        
+                        with col_detail2:
+                            st.markdown("#### 📊 Hasil Analisis")
+                            st.write(f"**Edge STD:** {edge_std:.2f}")
+                            st.write(f"**Ambang Kerataan:** {flatness_threshold:.1f}")
+                            st.write(f"**Status:** {status}")
                             if enable_contour:
-                                col_metric1, col_metric2, col_metric3, col_metric4 = st.columns(4)
-                            else:
-                                col_metric1, col_metric2, col_metric3 = st.columns(3)
-                            
-                            with col_metric1:
-                                st.markdown(f"""
-                                <div class="stMetric">
-                                <h4 style="color:#9c27b0;">📐 Edge STD</h4>
-                                <h2 style="color:#2196F3; text-align:center;">{edge_std:.2f}</h2>
-                                <p style="text-align:center;">Standar Deviasi Edge</p>
-                                </div>
-                                """, unsafe_allow_html=True)
-                            
-                            with col_metric2:
-                                st.markdown(f"""
-                                <div class="stMetric">
-                                <h4 style="color:#9c27b0;">🎯 Ambang</h4>
-                                <h2 style="color:#FF9800; text-align:center;">{flatness_threshold:.1f}</h2>
-                                <p style="text-align:center;">Batas Kerataan</p>
-                                </div>
-                                """, unsafe_allow_html=True)
-                            
-                            with col_metric3:
-                                st.markdown(f"""
-                                <div class="stMetric">
-                                <h4 style="color:#9c27b0;">📈 Status</h4>
-                                <h2 style="color:{color}; text-align:center;">{status}</h2>
-                                <p style="text-align:center;">Tingkat Kerataan</p>
-                                </div>
-                                """, unsafe_allow_html=True)
-                            
-                            if enable_contour and results['contour_image'] is not None:
-                                with col_metric4:
-                                    st.markdown(f"""
-                                    <div class="stMetric">
-                                    <h4 style="color:#9c27b0;">🔍 Kontur</h4>
-                                    <h2 style="color:#9C27B0; text-align:center;">{len(results['filtered_contours'])}</h2>
-                                    <p style="text-align:center;">Jumlah Kontur</p>
-                                    </div>
-                                    """, unsafe_allow_html=True)
-                            
-                            # Visualisasi grafik - DIAGRAM PERBANDINGAN
-                            st.subheader("📈 Diagram Perbandingan")
-                            
-                            if enable_contour:
-                                fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(14, 10))
-                            else:
-                                fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
-                            
-                            # Bar chart edge vs threshold
-                            bars1 = ax1.bar(["Edge STD", "Ambang"], [edge_std, flatness_threshold],
-                                         color=['#FF6B8B', '#4ECDC4'], edgecolor='#333', linewidth=2)
-                            ax1.axhline(y=flatness_threshold, color='red', linestyle='--', alpha=0.5)
-                            ax1.set_title("Perbandingan Nilai Edge", fontsize=12, fontweight='bold')
-                            ax1.set_ylabel("Nilai STD")
-                            ax1.grid(True, alpha=0.3)
-                            
-                            for bar in bars1:
-                                height = bar.get_height()
-                                ax1.text(bar.get_x() + bar.get_width()/2., height + 0.5,
-                                       f'{height:.1f}', ha='center', va='bottom')
-                            
-                            # Pie chart status
-                            if edge_std <= flatness_threshold:
-                                sizes = [edge_std, flatness_threshold - edge_std]
-                                colors_pie = ['#4CAF50', '#E0E0E0']
-                                explode = (0.1, 0)
-                            else:
-                                sizes = [flatness_threshold, edge_std - flatness_threshold]
-                                colors_pie = ['#F44336', '#FFCDD2']
-                                explode = (0, 0.1)
-                            
-                            ax2.pie(sizes, explode=explode, colors=colors_pie,
-                                  autopct='%1.1f%%', shadow=True, startangle=90)
-                            ax2.set_title(f"Status: {status}", fontsize=12, fontweight='bold')
-                            
-                            if enable_contour:
-                                # Histogram area kontur
-                                if results['filtered_contours']:
-                                    areas = [cv2.contourArea(cnt) for cnt in results['filtered_contours']]
-                                    ax3.hist(areas, bins=10, color='#FFB6C1', edgecolor='black')
-                                    ax3.set_title("Distribusi Area Kontur", fontsize=12, fontweight='bold')
-                                    ax3.set_xlabel("Area Kontur")
-                                    ax3.set_ylabel("Frekuensi")
-                                    ax3.grid(True, alpha=0.3)
-                                else:
-                                    ax3.text(0.5, 0.5, "Tidak ada kontur\nditemukan", 
-                                           ha='center', va='center', fontsize=12)
-                                    ax3.set_title("Distribusi Area Kontur", fontsize=12, fontweight='bold')
-                                
-                                # Scatter plot kontur
-                                if results['filtered_contours']:
-                                    x_coords = []
-                                    y_coords = []
-                                    for cnt in results['filtered_contours']:
-                                        M = cv2.moments(cnt)
-                                        if M["m00"] != 0:
-                                            cx = int(M["m10"] / M["m00"])
-                                            cy = int(M["m01"] / M["m00"])
-                                            x_coords.append(cx)
-                                            y_coords.append(cy)
-                                    
-                                    if x_coords and y_coords:
-                                        ax4.scatter(x_coords, y_coords, color='#9C27B0', s=50, alpha=0.6)
-                                        ax4.set_title("Posisi Pusat Kontur", fontsize=12, fontweight='bold')
-                                        ax4.set_xlabel("X Coordinate")
-                                        ax4.set_ylabel("Y Coordinate")
-                                        ax4.invert_yaxis()
-                                        ax4.grid(True, alpha=0.3)
-                                    else:
-                                        ax4.text(0.5, 0.5, "Tidak dapat menghitung\npusat kontur", 
-                                               ha='center', va='center', fontsize=12)
-                                        ax4.set_title("Posisi Pusat Kontur", fontsize=12, fontweight='bold')
-                                else:
-                                    ax4.text(0.5, 0.5, "Tidak ada kontur\nditemukan", 
-                                           ha='center', va='center', fontsize=12)
-                                    ax4.set_title("Posisi Pusat Kontur", fontsize=12, fontweight='bold')
-                            
-                            plt.tight_layout()
-                            st.pyplot(fig)
-                            
-                            # Detail analisis - TANPA JSON
-                            with st.expander("🔍 Detail Teknis Analisis", expanded=False):
-                                col_detail1, col_detail2 = st.columns(2)
-                                
-                                with col_detail1:
-                                    st.markdown("#### ⚙️ Parameter Pengolahan")
-                                    st.write(f"**Resize:** {'Aktif' if enable_resize else 'Tidak Aktif'}")
-                                    if enable_resize:
-                                        st.write(f"- Target Width: {target_width}px")
-                                    st.write(f"**Gaussian Blur:** {'Aktif' if enable_blur else 'Tidak Aktif'}")
-                                    if enable_blur:
-                                        st.write(f"- Kernel Size: {blur_ksize}x{blur_ksize}")
-                                    st.write(f"**Metode Edge:** {edge_method}")
-                                    st.write(f"- Detail: {results['method_text']}")
-                                
-                                with col_detail2:
-                                    st.markdown("#### 📊 Hasil Analisis")
-                                    st.write(f"**Edge STD:** {edge_std:.2f}")
-                                    st.write(f"**Ambang Kerataan:** {flatness_threshold:.1f}")
-                                    st.write(f"**Status:** {status}")
-                                    if enable_contour:
-                                        st.write(f"**Jumlah Kontur:** {len(results['filtered_contours'])}")
-                                    st.write(f"**Keputusan:** {'RATA' if edge_std <= flatness_threshold else 'TIDAK RATA'}")
-                                    st.write(f"**Waktu Analisis:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-                            
-                            # ==========================================================
-                            # BAGIAN EKSPOR HASIL TANPA JSON
-                            # ==========================================================
-                            st.markdown("---")
-                            st.subheader("💾 Ekspor Hasil")
-                            
-                            # Buat ZIP file yang berisi semua gambar hasil
-                            zip_buffer = io.BytesIO()
-                            
-                            # Simpan semua gambar ke dalam ZIP
-                            with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-                                # 1. Simpan gambar asli
-                                original_rgb = cv2.cvtColor(results['original_img'], cv2.COLOR_BGR2RGB)
-                                original_pil = Image.fromarray(original_rgb)
-                                original_buffer = io.BytesIO()
-                                original_pil.save(original_buffer, format='PNG')
-                                original_buffer.seek(0)
-                                zip_file.writestr(f"original_{selected_name}.png", original_buffer.read())
-                                
-                                # 2. Simpan gambar blur
-                                blur_pil = Image.fromarray(results['blur'])
-                                blur_buffer = io.BytesIO()
-                                blur_pil.save(blur_buffer, format='PNG')
-                                blur_buffer.seek(0)
-                                zip_file.writestr(f"blur_{selected_name}.png", blur_buffer.read())
-                                
-                                # 3. Simpan gambar edges
-                                edges_pil = Image.fromarray(results['edges'])
-                                edges_buffer = io.BytesIO()
-                                edges_pil.save(edges_buffer, format='PNG')
-                                edges_buffer.seek(0)
-                                zip_file.writestr(f"edges_{selected_name}.png", edges_buffer.read())
-                                
-                                # 4. Simpan gambar kontur jika ada
-                                if enable_contour and results['contour_image'] is not None:
-                                    contour_rgb = cv2.cvtColor(results['contour_image'], cv2.COLOR_BGR2RGB)
-                                    contour_pil = Image.fromarray(contour_rgb)
-                                    contour_buffer = io.BytesIO()
-                                    contour_pil.save(contour_buffer, format='PNG')
-                                    contour_buffer.seek(0)
-                                    zip_file.writestr(f"contour_{selected_name}.png", contour_buffer.read())
-                                
-                                # 5. Simpan CSV report (tanpa JSON)
-                                results_df = pd.DataFrame({
-                                    "Parameter": ["Gambar", "Metode Edge", "Edge STD", "Ambang", "Status", "Jumlah Kontur", "Waktu"],
-                                    "Nilai": [selected_name, results['method_text'], f"{edge_std:.2f}", 
-                                             f"{flatness_threshold:.1f}", status, 
-                                             f"{len(results['filtered_contours']) if enable_contour else 'N/A'}", 
-                                             datetime.now().strftime("%Y-%m-%d %H:%M:%S")]
-                                })
-                                csv_data = results_df.to_csv(index=False)
-                                zip_file.writestr(f"report_{selected_name}.csv", csv_data)
-                                
-                                # 6. Simpan metadata sebagai TEXT file (bukan JSON)
-                                metadata_text = f"""HASIL ANALISIS KERATAAN PERMUKAAN 3D
+                                st.write(f"**Jumlah Kontur:** {len(results['filtered_contours'])}")
+                            st.write(f"**Keputusan:** {'RATA' if edge_std <= flatness_threshold else 'TIDAK RATA'}")
+                            st.write(f"**Waktu Analisis:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                    
+                    # ==========================================================
+                    # BAGIAN EKSPOR HASIL TANPA JSON
+                    # ==========================================================
+                    st.markdown("---")
+                    st.subheader("💾 Ekspor Hasil")
+                    
+                    # Buat ZIP file yang berisi semua gambar hasil
+                    zip_buffer = io.BytesIO()
+                    
+                    # Simpan semua gambar ke dalam ZIP
+                    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                        # 1. Simpan gambar asli
+                        original_rgb = cv2.cvtColor(results['original_img'], cv2.COLOR_BGR2RGB)
+                        original_pil = Image.fromarray(original_rgb)
+                        original_buffer = io.BytesIO()
+                        original_pil.save(original_buffer, format='PNG')
+                        original_buffer.seek(0)
+                        zip_file.writestr(f"original_{selected_name}.png", original_buffer.read())
+                        
+                        # 2. Simpan gambar blur
+                        blur_pil = Image.fromarray(results['blur'])
+                        blur_buffer = io.BytesIO()
+                        blur_pil.save(blur_buffer, format='PNG')
+                        blur_buffer.seek(0)
+                        zip_file.writestr(f"blur_{selected_name}.png", blur_buffer.read())
+                        
+                        # 3. Simpan gambar edges
+                        edges_pil = Image.fromarray(results['edges'])
+                        edges_buffer = io.BytesIO()
+                        edges_pil.save(edges_buffer, format='PNG')
+                        edges_buffer.seek(0)
+                        zip_file.writestr(f"edges_{selected_name}.png", edges_buffer.read())
+                        
+                        # 4. Simpan gambar kontur jika ada
+                        if enable_contour and results['contour_image'] is not None:
+                            contour_rgb = cv2.cvtColor(results['contour_image'], cv2.COLOR_BGR2RGB)
+                            contour_pil = Image.fromarray(contour_rgb)
+                            contour_buffer = io.BytesIO()
+                            contour_pil.save(contour_buffer, format='PNG')
+                            contour_buffer.seek(0)
+                            zip_file.writestr(f"contour_{selected_name}.png", contour_buffer.read())
+                        
+                        # 5. Simpan CSV report (tanpa JSON)
+                        results_df = pd.DataFrame({
+                            "Parameter": ["Gambar", "Metode Edge", "Edge STD", "Ambang", "Status", "Jumlah Kontur", "Waktu"],
+                            "Nilai": [selected_name, results['method_text'], f"{edge_std:.2f}", 
+                                     f"{flatness_threshold:.1f}", status, 
+                                     f"{len(results['filtered_contours']) if enable_contour else 'N/A'}", 
+                                     datetime.now().strftime("%Y-%m-%d %H:%M:%S")]
+                        })
+                        csv_data = results_df.to_csv(index=False)
+                        zip_file.writestr(f"report_{selected_name}.csv", csv_data)
+                        
+                        # 6. Simpan metadata sebagai TEXT file (bukan JSON)
+                        metadata_text = f"""HASIL ANALISIS KERATAAN PERMUKAAN 3D
 ===========================================
 Nama Gambar: {selected_name}
 Tanggal Analisis: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
@@ -1222,54 +1282,51 @@ Aplikasi 3D Surface Flatness Detection
 Dibuat untuk pembelajaran Computer Vision
 © sanadhiri2025
 """
-                                zip_file.writestr(f"metadata_{selected_name}.txt", metadata_text)
+                        zip_file.writestr(f"metadata_{selected_name}.txt", metadata_text)
+                    
+                    zip_buffer.seek(0)
+                    
+                    # Simpan diagram perbandingan ke buffer terpisah
+                    diagram_buffer = io.BytesIO()
+                    fig.savefig(diagram_buffer, format='png', dpi=150, bbox_inches='tight')
+                    diagram_buffer.seek(0)
+                    
+                    # Tombol download
+                    if enable_contour:
+                        col_dl1, col_dl2, col_dl3 = st.columns(3)
+                    else:
+                        col_dl1, col_dl2 = st.columns(2)
+                    
+                    with col_dl1:
+                        st.download_button(
+                            label="📦 Download All Files (ZIP)",
+                            data=zip_buffer,
+                            file_name=f"hasil_analisis_{selected_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
+                            mime="application/zip"
+                        )
+                    
+                    with col_dl2:
+                        st.download_button(
+                            label="📊 Download Comparison Diagram",
+                            data=diagram_buffer,
+                            file_name=f"diagram_perbandingan_{selected_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png",
+                            mime="image/png"
+                        )
+                    
+                    if enable_contour and results['contour_image'] is not None:
+                        with col_dl3:
+                            contour_buf = io.BytesIO()
+                            contour_rgb = cv2.cvtColor(results['contour_image'], cv2.COLOR_BGR2RGB)
+                            contour_pil = Image.fromarray(contour_rgb)
+                            contour_pil.save(contour_buf, format='PNG')
+                            contour_buf.seek(0)
                             
-                            zip_buffer.seek(0)
-                            
-                            # Simpan diagram perbandingan ke buffer terpisah
-                            diagram_buffer = io.BytesIO()
-                            fig.savefig(diagram_buffer, format='png', dpi=150, bbox_inches='tight')
-                            diagram_buffer.seek(0)
-                            
-                            # Tombol download
-                            if enable_contour:
-                                col_dl1, col_dl2, col_dl3 = st.columns(3)
-                            else:
-                                col_dl1, col_dl2 = st.columns(2)
-                            
-                            with col_dl1:
-                                st.download_button(
-                                    label="📦 Download All Files (ZIP)",
-                                    data=zip_buffer,
-                                    file_name=f"hasil_analisis_{selected_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
-                                    mime="application/zip"
-                                )
-                            
-                            with col_dl2:
-                                st.download_button(
-                                    label="📊 Download Comparison Diagram",
-                                    data=diagram_buffer,
-                                    file_name=f"diagram_perbandingan_{selected_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png",
-                                    mime="image/png"
-                                )
-                            
-                            if enable_contour and results['contour_image'] is not None:
-                                with col_dl3:
-                                    contour_buf = io.BytesIO()
-                                    contour_rgb = cv2.cvtColor(results['contour_image'], cv2.COLOR_BGR2RGB)
-                                    contour_pil = Image.fromarray(contour_rgb)
-                                    contour_pil.save(contour_buf, format='PNG')
-                                    contour_buf.seek(0)
-                                    
-                                    st.download_button(
-                                        label="🎨 Download Contour Image",
-                                        data=contour_buf,
-                                        file_name=f"contour_{selected_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png",
-                                        mime="image/png"
-                                    )
-                            
-                        except Exception as e:
-                            st.error(f"❌ Terjadi error saat memproses gambar: {str(e)}")
+                            st.download_button(
+                                label="🎨 Download Contour Image",
+                                data=contour_buf,
+                                file_name=f"contour_{selected_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png",
+                                mime="image/png"
+                            )
             else:
                 st.warning("⚠️ Tidak ada gambar yang tersedia di dataset.")
                 st.info("Pastikan file-file berikut ada di folder yang sama dengan aplikasi:")
@@ -1285,7 +1342,8 @@ Dibuat untuk pembelajaran Computer Vision
                 "Pilih gambar dari komputer Anda (bisa lebih dari 1):",
                 type=["jpg", "jpeg", "png", "bmp"],
                 help="Upload satu atau lebih gambar yang ingin dianalisis",
-                accept_multiple_files=True
+                accept_multiple_files=True,
+                key="uploaded_files"
             )
             
             if uploaded_files:
@@ -1296,7 +1354,8 @@ Dibuat untuk pembelajaran Computer Vision
                     "Pilih Mode Analisis:",
                     ["🔍 Analisis Gambar Pilihan", "📊 Analisis Semua Gambar"],
                     horizontal=True,
-                    help="Analisis satu gambar yang dipilih atau analisis semua gambar sekaligus"
+                    help="Analisis satu gambar yang dipilih atau analisis semua gambar sekaligus",
+                    key="analysis_mode"
                 )
                 
                 # Buat tab untuk preview gambar
@@ -1316,7 +1375,8 @@ Dibuat untuk pembelajaran Computer Vision
                         selected_index = st.selectbox(
                             "Pilih gambar untuk dianalisis:",
                             range(len(uploaded_files)),
-                            format_func=lambda x: f"{x+1}. {uploaded_files[x].name}"
+                            format_func=lambda x: f"{x+1}. {uploaded_files[x].name}",
+                            key="selected_uploaded_index"
                         )
                         selected_file = uploaded_files[selected_index]
                     else:
@@ -1327,9 +1387,36 @@ Dibuat untuk pembelajaran Computer Vision
                     image = Image.open(selected_file)
                     st.image(image, caption=f"Preview: {selected_file.name}", use_container_width=True)
                     
-                    # Tombol proses untuk single image
-                    if st.button("🚀 Analisis Gambar Pilihan", type="primary", use_container_width=True):
-                        with st.spinner("🔍 Menganalisis gambar yang dipilih..."):
+                    # Simpan informasi gambar saat ini di session state
+                    current_params = {
+                        'source': 'upload_single',
+                        'uploaded_file_name': selected_file.name,
+                        'file_content': selected_file.getvalue() if hasattr(selected_file, 'getvalue') else None,
+                        'enable_resize': enable_resize,
+                        'target_width': target_width if enable_resize else None,
+                        'enable_blur': enable_blur,
+                        'blur_ksize': blur_ksize if enable_blur else None,
+                        'edge_method': edge_method,
+                        'canny_min': canny_min if edge_method == "Canny" else None,
+                        'canny_max': canny_max if edge_method == "Canny" else None,
+                        'sobel_kernel': sobel_kernel if edge_method == "Sobel" else None,
+                        'laplacian_kernel': laplacian_kernel if edge_method == "Laplacian" else None,
+                        'flatness_threshold': flatness_threshold,
+                        'enable_contour': enable_contour,
+                        'contour_color': contour_color if enable_contour else None,
+                        'contour_thickness': contour_thickness if enable_contour else None,
+                        'contour_min_area': contour_min_area if enable_contour else None,
+                        'contour_mode': contour_mode if enable_contour else None
+                    }
+                    
+                    # Cek apakah parameter berubah atau gambar berubah
+                    params_changed = current_params != st.session_state.last_processed_params
+                    image_changed = (st.session_state.current_image_source != 'upload_single' or 
+                                   st.session_state.current_uploaded_files != selected_file.name)
+                    
+                    # Jika parameter berubah atau gambar berubah, proses ulang
+                    if params_changed or image_changed or st.session_state.analysis_results is None:
+                        with st.spinner("🔍 Menganalisis gambar..."):
                             try:
                                 # Proses gambar tunggal
                                 img = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
@@ -1344,193 +1431,206 @@ Dibuat untuk pembelajaran Computer Vision
                                     contour_min_area, contour_mode
                                 )
                                 
-                                edge_std = results['edge_std']
+                                # Simpan hasil di session state
+                                st.session_state.analysis_results = results
+                                st.session_state.last_processed_params = current_params
+                                st.session_state.current_image_source = 'upload_single'
+                                st.session_state.current_uploaded_files = selected_file.name
                                 
-                                if edge_std <= flatness_threshold:
-                                    status = "RATA ✨"
-                                    color = "#4CAF50"
-                                    icon = "✅"
+                            except Exception as e:
+                                st.error(f"❌ Error: {str(e)}")
+                                st.session_state.analysis_results = None
+                    
+                    # Jika ada hasil yang disimpan, tampilkan
+                    if st.session_state.analysis_results is not None:
+                        results = st.session_state.analysis_results
+                        edge_std = results['edge_std']
+                        
+                        if edge_std <= flatness_threshold:
+                            status = "RATA ✨"
+                            color = "#4CAF50"
+                            icon = "✅"
+                        else:
+                            status = "TIDAK RATA 💥"
+                            color = "#F44336"
+                            icon = "⚠️"
+                        
+                        st.success(f"Analisis selesai! {icon}")
+                        
+                        # Tampilkan gambar hasil
+                        st.subheader("📷 Visualisasi Hasil")
+                        
+                        if enable_contour and results['contour_image'] is not None:
+                            c1, c2, c3, c4 = st.columns(4)
+                            
+                            with c1:
+                                st.image(results['original_img'], caption="🖼 Gambar Asli", use_container_width=True)
+                            
+                            with c2:
+                                st.image(results['blur'], caption="🌙 Grayscale + Blur", use_container_width=True)
+                            
+                            with c3:
+                                st.image(results['edges'], caption=f"✂ {edge_method} Edges", use_container_width=True)
+                            
+                            with c4:
+                                contour_text = f"🎨 {contour_mode}"
+                                st.image(results['contour_image'], caption=contour_text, use_container_width=True)
+                        else:
+                            c1, c2, c3 = st.columns(3)
+                            
+                            with c1:
+                                st.image(results['original_img'], caption="🖼 Gambar Asli", use_container_width=True)
+                            
+                            with c2:
+                                st.image(results['blur'], caption="🌙 Grayscale + Blur", use_container_width=True)
+                            
+                            with c3:
+                                st.image(results['edges'], caption=f"✂ {edge_method} Edges", use_container_width=True)
+                        
+                        # Metrik
+                        st.markdown("---")
+                        st.subheader("📊 Hasil Analisis")
+                        
+                        if enable_contour:
+                            col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+                        else:
+                            col_m1, col_m2, col_m3 = st.columns(3)
+                        
+                        with col_m1:
+                            st.metric("📐 Edge STD", f"{edge_std:.2f}")
+                        with col_m2:
+                            st.metric("🎯 Ambang", f"{flatness_threshold:.1f}")
+                        with col_m3:
+                            st.markdown(f"<h3 style='color:{color}; text-align:center;'>{status}</h3>", unsafe_allow_html=True)
+                        if enable_contour:
+                            with col_m4:
+                                st.metric("🔍 Kontur", f"{len(results['filtered_contours'])}")
+                        
+                        # DIAGRAM PERBANDINGAN UNTUK UPLOAD SINGLE
+                        st.subheader("📈 Diagram Perbandingan")
+                        
+                        if enable_contour:
+                            fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(14, 10))
+                        else:
+                            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
+                        
+                        # Bar chart edge vs threshold
+                        bars1 = ax1.bar(["Edge STD", "Ambang"], [edge_std, flatness_threshold],
+                                     color=['#FF6B8B', '#4ECDC4'], edgecolor='#333', linewidth=2)
+                        ax1.axhline(y=flatness_threshold, color='red', linestyle='--', alpha=0.5)
+                        ax1.set_title("Perbandingan Nilai Edge", fontsize=12, fontweight='bold')
+                        ax1.set_ylabel("Nilai STD")
+                        ax1.grid(True, alpha=0.3)
+                        
+                        for bar in bars1:
+                            height = bar.get_height()
+                            ax1.text(bar.get_x() + bar.get_width()/2., height + 0.5,
+                                   f'{height:.1f}', ha='center', va='bottom')
+                        
+                        # Pie chart status
+                        if edge_std <= flatness_threshold:
+                            sizes = [edge_std, flatness_threshold - edge_std]
+                            colors_pie = ['#4CAF50', '#E0E0E0']
+                            explode = (0.1, 0)
+                        else:
+                            sizes = [flatness_threshold, edge_std - flatness_threshold]
+                            colors_pie = ['#F44336', '#FFCDD2']
+                            explode = (0, 0.1)
+                        
+                        ax2.pie(sizes, explode=explode, colors=colors_pie,
+                              autopct='%1.1f%%', shadow=True, startangle=90)
+                        ax2.set_title(f"Status: {status}", fontsize=12, fontweight='bold')
+                        
+                        if enable_contour:
+                            # Histogram area kontur
+                            if results['filtered_contours']:
+                                areas = [cv2.contourArea(cnt) for cnt in results['filtered_contours']]
+                                ax3.hist(areas, bins=10, color='#FFB6C1', edgecolor='black')
+                                ax3.set_title("Distribusi Area Kontur", fontsize=12, fontweight='bold')
+                                ax3.set_xlabel("Area Kontur")
+                                ax3.set_ylabel("Frekuensi")
+                                ax3.grid(True, alpha=0.3)
+                            else:
+                                ax3.text(0.5, 0.5, "Tidak ada kontur\nditemukan", 
+                                       ha='center', va='center', fontsize=12)
+                                ax3.set_title("Distribusi Area Kontur", fontsize=12, fontweight='bold')
+                            
+                            # Scatter plot kontur
+                            if results['filtered_contours']:
+                                x_coords = []
+                                y_coords = []
+                                for cnt in results['filtered_contours']:
+                                    M = cv2.moments(cnt)
+                                    if M["m00"] != 0:
+                                        cx = int(M["m10"] / M["m00"])
+                                        cy = int(M["m01"] / M["m00"])
+                                        x_coords.append(cx)
+                                        y_coords.append(cy)
+                                
+                                if x_coords and y_coords:
+                                    ax4.scatter(x_coords, y_coords, color='#9C27B0', s=50, alpha=0.6)
+                                    ax4.set_title("Posisi Pusat Kontur", fontsize=12, fontweight='bold')
+                                    ax4.set_xlabel("X Coordinate")
+                                    ax4.set_ylabel("Y Coordinate")
+                                    ax4.invert_yaxis()
+                                    ax4.grid(True, alpha=0.3)
                                 else:
-                                    status = "TIDAK RATA 💥"
-                                    color = "#F44336"
-                                    icon = "⚠️"
-                                
-                                st.success(f"Analisis selesai! {icon}")
-                                
-                                # Tampilkan gambar hasil
-                                st.subheader("📷 Visualisasi Hasil")
-                                
-                                if enable_contour and results['contour_image'] is not None:
-                                    c1, c2, c3, c4 = st.columns(4)
-                                    
-                                    with c1:
-                                        st.image(results['original_img'], caption="🖼 Gambar Asli", use_container_width=True)
-                                    
-                                    with c2:
-                                        st.image(results['blur'], caption="🌙 Grayscale + Blur", use_container_width=True)
-                                    
-                                    with c3:
-                                        st.image(results['edges'], caption=f"✂ {edge_method} Edges", use_container_width=True)
-                                    
-                                    with c4:
-                                        contour_text = f"🎨 {contour_mode}"
-                                        st.image(results['contour_image'], caption=contour_text, use_container_width=True)
-                                else:
-                                    c1, c2, c3 = st.columns(3)
-                                    
-                                    with c1:
-                                        st.image(results['original_img'], caption="🖼 Gambar Asli", use_container_width=True)
-                                    
-                                    with c2:
-                                        st.image(results['blur'], caption="🌙 Grayscale + Blur", use_container_width=True)
-                                    
-                                    with c3:
-                                        st.image(results['edges'], caption=f"✂ {edge_method} Edges", use_container_width=True)
-                                
-                                # Metrik
-                                st.markdown("---")
-                                st.subheader("📊 Hasil Analisis")
-                                
-                                if enable_contour:
-                                    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-                                else:
-                                    col_m1, col_m2, col_m3 = st.columns(3)
-                                
-                                with col_m1:
-                                    st.metric("📐 Edge STD", f"{edge_std:.2f}")
-                                with col_m2:
-                                    st.metric("🎯 Ambang", f"{flatness_threshold:.1f}")
-                                with col_m3:
-                                    st.markdown(f"<h3 style='color:{color}; text-align:center;'>{status}</h3>", unsafe_allow_html=True)
-                                if enable_contour:
-                                    with col_m4:
-                                        st.metric("🔍 Kontur", f"{len(results['filtered_contours'])}")
-                                
-                                # DIAGRAM PERBANDINGAN UNTUK UPLOAD SINGLE
-                                st.subheader("📈 Diagram Perbandingan")
-                                
-                                if enable_contour:
-                                    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(14, 10))
-                                else:
-                                    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
-                                
-                                # Bar chart edge vs threshold
-                                bars1 = ax1.bar(["Edge STD", "Ambang"], [edge_std, flatness_threshold],
-                                             color=['#FF6B8B', '#4ECDC4'], edgecolor='#333', linewidth=2)
-                                ax1.axhline(y=flatness_threshold, color='red', linestyle='--', alpha=0.5)
-                                ax1.set_title("Perbandingan Nilai Edge", fontsize=12, fontweight='bold')
-                                ax1.set_ylabel("Nilai STD")
-                                ax1.grid(True, alpha=0.3)
-                                
-                                for bar in bars1:
-                                    height = bar.get_height()
-                                    ax1.text(bar.get_x() + bar.get_width()/2., height + 0.5,
-                                           f'{height:.1f}', ha='center', va='bottom')
-                                
-                                # Pie chart status
-                                if edge_std <= flatness_threshold:
-                                    sizes = [edge_std, flatness_threshold - edge_std]
-                                    colors_pie = ['#4CAF50', '#E0E0E0']
-                                    explode = (0.1, 0)
-                                else:
-                                    sizes = [flatness_threshold, edge_std - flatness_threshold]
-                                    colors_pie = ['#F44336', '#FFCDD2']
-                                    explode = (0, 0.1)
-                                
-                                ax2.pie(sizes, explode=explode, colors=colors_pie,
-                                      autopct='%1.1f%%', shadow=True, startangle=90)
-                                ax2.set_title(f"Status: {status}", fontsize=12, fontweight='bold')
-                                
-                                if enable_contour:
-                                    # Histogram area kontur
-                                    if results['filtered_contours']:
-                                        areas = [cv2.contourArea(cnt) for cnt in results['filtered_contours']]
-                                        ax3.hist(areas, bins=10, color='#FFB6C1', edgecolor='black')
-                                        ax3.set_title("Distribusi Area Kontur", fontsize=12, fontweight='bold')
-                                        ax3.set_xlabel("Area Kontur")
-                                        ax3.set_ylabel("Frekuensi")
-                                        ax3.grid(True, alpha=0.3)
-                                    else:
-                                        ax3.text(0.5, 0.5, "Tidak ada kontur\nditemukan", 
-                                               ha='center', va='center', fontsize=12)
-                                        ax3.set_title("Distribusi Area Kontur", fontsize=12, fontweight='bold')
-                                    
-                                    # Scatter plot kontur
-                                    if results['filtered_contours']:
-                                        x_coords = []
-                                        y_coords = []
-                                        for cnt in results['filtered_contours']:
-                                            M = cv2.moments(cnt)
-                                            if M["m00"] != 0:
-                                                cx = int(M["m10"] / M["m00"])
-                                                cy = int(M["m01"] / M["m00"])
-                                                x_coords.append(cx)
-                                                y_coords.append(cy)
-                                        
-                                        if x_coords and y_coords:
-                                            ax4.scatter(x_coords, y_coords, color='#9C27B0', s=50, alpha=0.6)
-                                            ax4.set_title("Posisi Pusat Kontur", fontsize=12, fontweight='bold')
-                                            ax4.set_xlabel("X Coordinate")
-                                            ax4.set_ylabel("Y Coordinate")
-                                            ax4.invert_yaxis()
-                                            ax4.grid(True, alpha=0.3)
-                                        else:
-                                            ax4.text(0.5, 0.5, "Tidak dapat menghitung\npusat kontur", 
-                                                   ha='center', va='center', fontsize=12)
-                                            ax4.set_title("Posisi Pusat Kontur", fontsize=12, fontweight='bold')
-                                    else:
-                                        ax4.text(0.5, 0.5, "Tidak ada kontur\nditemukan", 
-                                               ha='center', va='center', fontsize=12)
-                                        ax4.set_title("Posisi Pusat Kontur", fontsize=12, fontweight='bold')
-                                
-                                plt.tight_layout()
-                                st.pyplot(fig)
-                                
-                                # Ekspor hasil untuk single upload - TANPA JSON
-                                st.markdown("---")
-                                st.subheader("💾 Ekspor Hasil")
-                                
-                                zip_buffer = io.BytesIO()
-                                with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-                                    original_rgb = cv2.cvtColor(results['original_img'], cv2.COLOR_BGR2RGB)
-                                    original_pil = Image.fromarray(original_rgb)
-                                    original_buffer = io.BytesIO()
-                                    original_pil.save(original_buffer, format='PNG')
-                                    original_buffer.seek(0)
-                                    zip_file.writestr(f"original_{selected_file.name}.png", original_buffer.read())
-                                    
-                                    blur_pil = Image.fromarray(results['blur'])
-                                    blur_buffer = io.BytesIO()
-                                    blur_pil.save(blur_buffer, format='PNG')
-                                    blur_buffer.seek(0)
-                                    zip_file.writestr(f"blur_{selected_file.name}.png", blur_buffer.read())
-                                    
-                                    edges_pil = Image.fromarray(results['edges'])
-                                    edges_buffer = io.BytesIO()
-                                    edges_pil.save(edges_buffer, format='PNG')
-                                    edges_buffer.seek(0)
-                                    zip_file.writestr(f"edges_{selected_file.name}.png", edges_buffer.read())
-                                    
-                                    if enable_contour and results['contour_image'] is not None:
-                                        contour_rgb = cv2.cvtColor(results['contour_image'], cv2.COLOR_BGR2RGB)
-                                        contour_pil = Image.fromarray(contour_rgb)
-                                        contour_buffer = io.BytesIO()
-                                        contour_pil.save(contour_buffer, format='PNG')
-                                        contour_buffer.seek(0)
-                                        zip_file.writestr(f"contour_{selected_file.name}.png", contour_buffer.read())
-                                    
-                                    results_df = pd.DataFrame({
-                                        "Parameter": ["Gambar", "Metode Edge", "Edge STD", "Ambang", "Status", "Jumlah Kontur", "Waktu"],
-                                        "Nilai": [selected_file.name, results['method_text'], f"{edge_std:.2f}", 
-                                                 f"{flatness_threshold:.1f}", status, 
-                                                 f"{len(results['filtered_contours']) if enable_contour else 'N/A'}", 
-                                                 datetime.now().strftime("%Y-%m-%d %H:%M:%S")]
-                                    })
-                                    csv_data = results_df.to_csv(index=False)
-                                    zip_file.writestr(f"report_{selected_file.name}.csv", csv_data)
-                                    
-                                    # Simpan metadata sebagai TEXT file
-                                    metadata_text = f"""HASIL ANALISIS KERATAAN PERMUKAAN 3D
+                                    ax4.text(0.5, 0.5, "Tidak dapat menghitung\npusat kontur", 
+                                           ha='center', va='center', fontsize=12)
+                                    ax4.set_title("Posisi Pusat Kontur", fontsize=12, fontweight='bold')
+                            else:
+                                ax4.text(0.5, 0.5, "Tidak ada kontur\nditemukan", 
+                                       ha='center', va='center', fontsize=12)
+                                ax4.set_title("Posisi Pusat Kontur", fontsize=12, fontweight='bold')
+                        
+                        plt.tight_layout()
+                        st.pyplot(fig)
+                        
+                        # Ekspor hasil untuk single upload - TANPA JSON
+                        st.markdown("---")
+                        st.subheader("💾 Ekspor Hasil")
+                        
+                        zip_buffer = io.BytesIO()
+                        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                            original_rgb = cv2.cvtColor(results['original_img'], cv2.COLOR_BGR2RGB)
+                            original_pil = Image.fromarray(original_rgb)
+                            original_buffer = io.BytesIO()
+                            original_pil.save(original_buffer, format='PNG')
+                            original_buffer.seek(0)
+                            zip_file.writestr(f"original_{selected_file.name}.png", original_buffer.read())
+                            
+                            blur_pil = Image.fromarray(results['blur'])
+                            blur_buffer = io.BytesIO()
+                            blur_pil.save(blur_buffer, format='PNG')
+                            blur_buffer.seek(0)
+                            zip_file.writestr(f"blur_{selected_file.name}.png", blur_buffer.read())
+                            
+                            edges_pil = Image.fromarray(results['edges'])
+                            edges_buffer = io.BytesIO()
+                            edges_pil.save(edges_buffer, format='PNG')
+                            edges_buffer.seek(0)
+                            zip_file.writestr(f"edges_{selected_file.name}.png", edges_buffer.read())
+                            
+                            if enable_contour and results['contour_image'] is not None:
+                                contour_rgb = cv2.cvtColor(results['contour_image'], cv2.COLOR_BGR2RGB)
+                                contour_pil = Image.fromarray(contour_rgb)
+                                contour_buffer = io.BytesIO()
+                                contour_pil.save(contour_buffer, format='PNG')
+                                contour_buffer.seek(0)
+                                zip_file.writestr(f"contour_{selected_file.name}.png", contour_buffer.read())
+                            
+                            results_df = pd.DataFrame({
+                                "Parameter": ["Gambar", "Metode Edge", "Edge STD", "Ambang", "Status", "Jumlah Kontur", "Waktu"],
+                                "Nilai": [selected_file.name, results['method_text'], f"{edge_std:.2f}", 
+                                         f"{flatness_threshold:.1f}", status, 
+                                         f"{len(results['filtered_contours']) if enable_contour else 'N/A'}", 
+                                         datetime.now().strftime("%Y-%m-%d %H:%M:%S")]
+                            })
+                            csv_data = results_df.to_csv(index=False)
+                            zip_file.writestr(f"report_{selected_file.name}.csv", csv_data)
+                            
+                            # Simpan metadata sebagai TEXT file
+                            metadata_text = f"""HASIL ANALISIS KERATAAN PERMUKAAN 3D
 ===========================================
 Nama Gambar: {selected_file.name}
 Tanggal Analisis: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
@@ -1567,55 +1667,79 @@ Aplikasi 3D Surface Flatness Detection
 Dibuat untuk pembelajaran Computer Vision
 © sanadhiri2025
 """
-                                    zip_file.writestr(f"metadata_{selected_file.name}.txt", metadata_text)
+                            zip_file.writestr(f"metadata_{selected_file.name}.txt", metadata_text)
+                        
+                        zip_buffer.seek(0)
+                        
+                        diagram_buffer = io.BytesIO()
+                        fig.savefig(diagram_buffer, format='png', dpi=150, bbox_inches='tight')
+                        diagram_buffer.seek(0)
+                        
+                        if enable_contour:
+                            col_dl1, col_dl2, col_dl3 = st.columns(3)
+                        else:
+                            col_dl1, col_dl2 = st.columns(2)
+                        
+                        with col_dl1:
+                            st.download_button(
+                                label="📦 Download All Files (ZIP)",
+                                data=zip_buffer,
+                                file_name=f"hasil_analisis_{selected_file.name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
+                                mime="application/zip"
+                            )
+                        
+                        with col_dl2:
+                            st.download_button(
+                                label="📊 Download Comparison Diagram",
+                                data=diagram_buffer,
+                                file_name=f"diagram_perbandingan_{selected_file.name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png",
+                                mime="image/png"
+                            )
+                        
+                        if enable_contour and results['contour_image'] is not None:
+                            with col_dl3:
+                                contour_buf = io.BytesIO()
+                                contour_rgb = cv2.cvtColor(results['contour_image'], cv2.COLOR_BGR2RGB)
+                                contour_pil = Image.fromarray(contour_rgb)
+                                contour_pil.save(contour_buf, format='PNG')
+                                contour_buf.seek(0)
                                 
-                                zip_buffer.seek(0)
-                                
-                                diagram_buffer = io.BytesIO()
-                                fig.savefig(diagram_buffer, format='png', dpi=150, bbox_inches='tight')
-                                diagram_buffer.seek(0)
-                                
-                                if enable_contour:
-                                    col_dl1, col_dl2, col_dl3 = st.columns(3)
-                                else:
-                                    col_dl1, col_dl2 = st.columns(2)
-                                
-                                with col_dl1:
-                                    st.download_button(
-                                        label="📦 Download All Files (ZIP)",
-                                        data=zip_buffer,
-                                        file_name=f"hasil_analisis_{selected_file.name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
-                                        mime="application/zip"
-                                    )
-                                
-                                with col_dl2:
-                                    st.download_button(
-                                        label="📊 Download Comparison Diagram",
-                                        data=diagram_buffer,
-                                        file_name=f"diagram_perbandingan_{selected_file.name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png",
-                                        mime="image/png"
-                                    )
-                                
-                                if enable_contour and results['contour_image'] is not None:
-                                    with col_dl3:
-                                        contour_buf = io.BytesIO()
-                                        contour_rgb = cv2.cvtColor(results['contour_image'], cv2.COLOR_BGR2RGB)
-                                        contour_pil = Image.fromarray(contour_rgb)
-                                        contour_pil.save(contour_buf, format='PNG')
-                                        contour_buf.seek(0)
-                                        
-                                        st.download_button(
-                                            label="🎨 Download Contour Image",
-                                            data=contour_buf,
-                                            file_name=f"contour_{selected_file.name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png",
-                                            mime="image/png"
-                                        )
-                                
-                            except Exception as e:
-                                st.error(f"❌ Error: {str(e)}")
+                                st.download_button(
+                                    label="🎨 Download Contour Image",
+                                    data=contour_buf,
+                                    file_name=f"contour_{selected_file.name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png",
+                                    mime="image/png"
+                                )
                 
                 else:  # Analisis Semua Gambar
-                    if st.button("🚀 Analisis Semua Gambar", type="primary", use_container_width=True):
+                    # Simpan informasi untuk analisis semua gambar
+                    current_params = {
+                        'source': 'upload_all',
+                        'file_count': len(uploaded_files),
+                        'enable_resize': enable_resize,
+                        'target_width': target_width if enable_resize else None,
+                        'enable_blur': enable_blur,
+                        'blur_ksize': blur_ksize if enable_blur else None,
+                        'edge_method': edge_method,
+                        'canny_min': canny_min if edge_method == "Canny" else None,
+                        'canny_max': canny_max if edge_method == "Canny" else None,
+                        'sobel_kernel': sobel_kernel if edge_method == "Sobel" else None,
+                        'laplacian_kernel': laplacian_kernel if edge_method == "Laplacian" else None,
+                        'flatness_threshold': flatness_threshold,
+                        'enable_contour': enable_contour,
+                        'contour_color': contour_color if enable_contour else None,
+                        'contour_thickness': contour_thickness if enable_contour else None,
+                        'contour_min_area': contour_min_area if enable_contour else None,
+                        'contour_mode': contour_mode if enable_contour else None
+                    }
+                    
+                    # Cek apakah parameter berubah atau file berubah
+                    params_changed = current_params != st.session_state.last_processed_params
+                    files_changed = (st.session_state.current_image_source != 'upload_all' or 
+                                   st.session_state.current_uploaded_files != str([f.name for f in uploaded_files]))
+                    
+                    # Jika parameter berubah atau file berubah, proses ulang
+                    if params_changed or files_changed or st.session_state.analysis_results is None:
                         with st.spinner(f"🔍 Menganalisis {len(uploaded_files)} gambar..."):
                             try:
                                 all_results = []
@@ -1651,79 +1775,93 @@ Dibuat untuk pembelajaran Computer Vision
                                         'kontur': len(results['filtered_contours']) if enable_contour else 0
                                     })
                                 
+                                # Simpan hasil di session state
+                                st.session_state.analysis_results = all_results
+                                st.session_state.last_processed_params = current_params
+                                st.session_state.current_image_source = 'upload_all'
+                                st.session_state.current_uploaded_files = str([f.name for f in uploaded_files])
+                                
                                 st.success(f"✅ Analisis {len(uploaded_files)} gambar selesai!")
                                 
-                                # Tampilkan hasil dalam tabel
-                                st.subheader("📋 Hasil Analisis Semua Gambar")
-                                
-                                results_df = pd.DataFrame(all_results)
-                                results_df.index = range(1, len(results_df) + 1)
-                                
-                                # Format tabel dengan warna
-                                def color_status(val):
-                                    if val == "RATA":
-                                        return 'background-color: #C8E6C9; color: #1B5E20; font-weight: bold;'
-                                    else:
-                                        return 'background-color: #FFCDD2; color: #B71C1C; font-weight: bold;'
-                                
-                                styled_df = results_df.style.applymap(color_status, subset=['status'])
-                                st.dataframe(styled_df, use_container_width=True)
-                                
-                                # Grafik perbandingan semua gambar
-                                st.subheader("📈 Perbandingan Semua Gambar")
-                                
-                                fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
-                                
-                                # Bar chart untuk semua gambar
-                                x_labels = [f"Img {i+1}" for i in range(len(all_results))]
-                                edge_stds = [r['edge_std'] for r in all_results]
-                                colors = [r['color'] for r in all_results]
-                                
-                                bars = ax1.bar(x_labels, edge_stds, color=colors, edgecolor='black', linewidth=1)
-                                ax1.axhline(y=flatness_threshold, color='red', linestyle='--', alpha=0.7, 
-                                          label=f'Ambang: {flatness_threshold}')
-                                ax1.set_title("Edge STD Semua Gambar", fontsize=14, fontweight='bold')
-                                ax1.set_ylabel("Edge STD")
-                                ax1.set_xlabel("Gambar")
-                                ax1.grid(True, alpha=0.3)
-                                ax1.legend()
-                                
-                                for bar in bars:
-                                    height = bar.get_height()
-                                    ax1.text(bar.get_x() + bar.get_width()/2., height + 0.5,
-                                           f'{height:.1f}', ha='center', va='bottom', fontsize=9)
-                                
-                                # Pie chart status
-                                rata_count = sum(1 for r in all_results if r['status'] == "RATA")
-                                tidak_rata_count = len(all_results) - rata_count
-                                
-                                sizes = [rata_count, tidak_rata_count]
-                                labels = ['RATA', 'TIDAK RATA']
-                                colors_pie = ['#4CAF50', '#F44336']
-                                
-                                ax2.pie(sizes, labels=labels, colors=colors_pie, autopct='%1.1f%%',
-                                      startangle=90, shadow=True, explode=(0.05, 0))
-                                ax2.set_title(f"Status Keseluruhan\n({len(all_results)} gambar)", 
-                                            fontsize=14, fontweight='bold')
-                                
-                                plt.tight_layout()
-                                st.pyplot(fig)
-                                
-                                # Download semua hasil - TANPA JSON
-                                st.markdown("---")
-                                st.subheader("💾 Ekspor Semua Hasil")
-                                
-                                # Buat ZIP untuk semua gambar
-                                all_zip_buffer = io.BytesIO()
-                                
-                                with zipfile.ZipFile(all_zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-                                    # Simpan summary CSV
-                                    summary_df = pd.DataFrame(all_results)
-                                    summary_csv = summary_df.to_csv(index=False)
-                                    zip_file.writestr("summary_all_images.csv", summary_csv)
-                                    
-                                    # Simpan metadata sebagai TEXT file
-                                    metadata_text = f"""HASIL ANALISIS KERATAAN PERMUKAAN 3D
+                            except Exception as e:
+                                st.error(f"❌ Error saat menganalisis semua gambar: {str(e)}")
+                                st.session_state.analysis_results = None
+                    
+                    # Jika ada hasil yang disimpan, tampilkan
+                    if st.session_state.analysis_results is not None and isinstance(st.session_state.analysis_results, list):
+                        all_results = st.session_state.analysis_results
+                        
+                        # Tampilkan hasil dalam tabel
+                        st.subheader("📋 Hasil Analisis Semua Gambar")
+                        
+                        results_df = pd.DataFrame(all_results)
+                        results_df.index = range(1, len(results_df) + 1)
+                        
+                        # Format tabel dengan warna
+                        def color_status(val):
+                            if val == "RATA":
+                                return 'background-color: #C8E6C9; color: #1B5E20; font-weight: bold;'
+                            else:
+                                return 'background-color: #FFCDD2; color: #B71C1C; font-weight: bold;'
+                        
+                        styled_df = results_df.style.applymap(color_status, subset=['status'])
+                        st.dataframe(styled_df, use_container_width=True)
+                        
+                        # Grafik perbandingan semua gambar
+                        st.subheader("📈 Perbandingan Semua Gambar")
+                        
+                        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+                        
+                        # Bar chart untuk semua gambar
+                        x_labels = [f"Img {i+1}" for i in range(len(all_results))]
+                        edge_stds = [r['edge_std'] for r in all_results]
+                        colors = [r['color'] for r in all_results]
+                        
+                        bars = ax1.bar(x_labels, edge_stds, color=colors, edgecolor='black', linewidth=1)
+                        ax1.axhline(y=flatness_threshold, color='red', linestyle='--', alpha=0.7, 
+                                  label=f'Ambang: {flatness_threshold}')
+                        ax1.set_title("Edge STD Semua Gambar", fontsize=14, fontweight='bold')
+                        ax1.set_ylabel("Edge STD")
+                        ax1.set_xlabel("Gambar")
+                        ax1.grid(True, alpha=0.3)
+                        ax1.legend()
+                        
+                        for bar in bars:
+                            height = bar.get_height()
+                            ax1.text(bar.get_x() + bar.get_width()/2., height + 0.5,
+                                   f'{height:.1f}', ha='center', va='bottom', fontsize=9)
+                        
+                        # Pie chart status
+                        rata_count = sum(1 for r in all_results if r['status'] == "RATA")
+                        tidak_rata_count = len(all_results) - rata_count
+                        
+                        sizes = [rata_count, tidak_rata_count]
+                        labels = ['RATA', 'TIDAK RATA']
+                        colors_pie = ['#4CAF50', '#F44336']
+                        
+                        ax2.pie(sizes, labels=labels, colors=colors_pie, autopct='%1.1f%%',
+                              startangle=90, shadow=True, explode=(0.05, 0))
+                        ax2.set_title(f"Status Keseluruhan\n({len(all_results)} gambar)", 
+                                    fontsize=14, fontweight='bold')
+                        
+                        plt.tight_layout()
+                        st.pyplot(fig)
+                        
+                        # Download semua hasil - TANPA JSON
+                        st.markdown("---")
+                        st.subheader("💾 Ekspor Semua Hasil")
+                        
+                        # Buat ZIP untuk semua gambar
+                        all_zip_buffer = io.BytesIO()
+                        
+                        with zipfile.ZipFile(all_zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                            # Simpan summary CSV
+                            summary_df = pd.DataFrame(all_results)
+                            summary_csv = summary_df.to_csv(index=False)
+                            zip_file.writestr("summary_all_images.csv", summary_csv)
+                            
+                            # Simpan metadata sebagai TEXT file
+                            metadata_text = f"""HASIL ANALISIS KERATAAN PERMUKAAN 3D
 ===========================================
 ANALISIS MULTIPLE GAMBAR
 ========================
@@ -1762,35 +1900,32 @@ Aplikasi 3D Surface Flatness Detection
 Dibuat untuk pembelajaran Computer Vision
 © sanadhiri2025
 """
-                                    zip_file.writestr("metadata_all_images.txt", metadata_text)
-                                
-                                all_zip_buffer.seek(0)
-                                
-                                col_dl1, col_dl2 = st.columns(2)
-                                
-                                with col_dl1:
-                                    st.download_button(
-                                        label="📊 Download Summary (CSV+TXT)",
-                                        data=all_zip_buffer,
-                                        file_name=f"summary_analisis_{len(uploaded_files)}_gambar_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
-                                        mime="application/zip"
-                                    )
-                                
-                                with col_dl2:
-                                    # Simpan diagram ke buffer
-                                    fig_buffer = io.BytesIO()
-                                    fig.savefig(fig_buffer, format='png', dpi=150, bbox_inches='tight')
-                                    fig_buffer.seek(0)
-                                    
-                                    st.download_button(
-                                        label="📈 Download Comparison Chart",
-                                        data=fig_buffer,
-                                        file_name=f"comparison_chart_{len(uploaded_files)}_gambar_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png",
-                                        mime="image/png"
-                                    )
-                                
-                            except Exception as e:
-                                st.error(f"❌ Error saat menganalisis semua gambar: {str(e)}")
+                            zip_file.writestr("metadata_all_images.txt", metadata_text)
+                        
+                        all_zip_buffer.seek(0)
+                        
+                        col_dl1, col_dl2 = st.columns(2)
+                        
+                        with col_dl1:
+                            st.download_button(
+                                label="📊 Download Summary (CSV+TXT)",
+                                data=all_zip_buffer,
+                                file_name=f"summary_analisis_{len(uploaded_files)}_gambar_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
+                                mime="application/zip"
+                            )
+                        
+                        with col_dl2:
+                            # Simpan diagram ke buffer
+                            fig_buffer = io.BytesIO()
+                            fig.savefig(fig_buffer, format='png', dpi=150, bbox_inches='tight')
+                            fig_buffer.seek(0)
+                            
+                            st.download_button(
+                                label="📈 Download Comparison Chart",
+                                data=fig_buffer,
+                                file_name=f"comparison_chart_{len(uploaded_files)}_gambar_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png",
+                                mime="image/png"
+                            )
             
             st.markdown("</div>", unsafe_allow_html=True)
 
